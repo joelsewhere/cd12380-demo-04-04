@@ -47,7 +47,7 @@ TABLES = [
     },
 ]
 
-RAW_INGESTION_COMPLETE = Asset(f"s3://{S3_BUCKET}/iceberg-warehouse/transactions/")
+RAW_INGESTION_COMPLETE = Asset(f"s3://{S3_BUCKET}/iceberg-warehouse/raw/")
 
 SQL_DIR = Path(__file__).parent / 'sql'
 
