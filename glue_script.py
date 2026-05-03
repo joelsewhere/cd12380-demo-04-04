@@ -12,16 +12,13 @@ config = json.loads(args['config'])
 
 table_name = config['table']
 sql_s3_path = config['sql']
-evolve_schema = config.get('evolve_schema', False)
 upsert_keys = config['upsert_keys']
 partition_keys = config.get('partition_keys', [])
-ignore_columns = config.get('ignore_columns', [])
 
+# Initialize Spark Session
 sc = SparkContext()
-
 glueContext = GlueContext(sc)
 spark = glueContext.spark_session
-
 
 # Unique view for parallel safety
 unique_stg = f"stg_{table_name}_{str(uuid.uuid4())[:8]}"
@@ -32,9 +29,7 @@ bucket, key = sql_s3_path.replace("s3://", "").split("/", 1)
 sql_query = s3.get_object(Bucket=bucket, Key=key)['Body'].read().decode('utf-8')
 
 # 3. Create Staging & Filter
-raw_df = spark.sql(sql_query)
-# Filter ignored columns
-stg_df = raw_df.select([c for c in raw_df.columns if c not in ignore_columns])
+stg_df = spark.sql(sql_query)
 
 # Drop duplicates on upsert keys
 stg_df = stg_df.dropDuplicates(upsert_keys)
@@ -64,15 +59,11 @@ else:
     new_cols = set(stg_df.columns) - set(target_df.columns)
     
     if new_cols:
-        if evolve_schema:
-            for col in new_cols:
-                # Iceberg-compatible SQL type (e.g., DECIMAL(10,2))
-                col_type = stg_df.schema[col].dataType.sql
-                spark.sql(f"ALTER TABLE {target_table} ADD COLUMN {col} {col_type}")
-        else:
-            # Re-filter to match target if evolution is blocked
-            stg_df = stg_df.select([c for c in stg_df.columns if c in target_df.columns])
-            stg_df.createOrReplaceTempView(unique_stg)
+
+        for col in new_cols:
+            # Iceberg-compatible SQL type (e.g., DECIMAL(10,2))
+            col_type = stg_df.schema[col].dataType.simpleString()
+            spark.sql(f"ALTER TABLE {target_table} ADD COLUMN {col} {col_type}")
 
     # 6. Iceberg-Optimized MERGE
     # Inclusion of partition keys in 'on_clause' enables Partition Pruning
